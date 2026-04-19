@@ -4,7 +4,6 @@
 .env.local
 
 # ── Raw data (too large for GitHub — download from Kaggle) ───────────────────
-data/transaction_data.csv
 data/product.csv
 data/hh_demographic.csv
 data/coupon.csv
@@ -12,6 +11,9 @@ data/coupon_redempt.csv
 data/campaign_table.csv
 data/campaign_desc.csv
 data/causal_data.csv
+data/transaction_data.csv
+data/feature_matrix.csv
+data/feature_matrix_segmented.csv
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
