@@ -1,0 +1,9 @@
+table,rows,cols,dup_rows,null_pct_max,null_cols,high_null_cols
+transactions,2595732,12,0,0.0,[],[]
+products,92353,7,0,0.0,[],[]
+demographics,801,8,0,0.0,[],[]
+coupon,124548,3,5164,0.0,[],[]
+coupon_redempt,2318,4,0,0.0,[],[]
+campaign_table,7208,3,0,0.0,[],[]
+campaign_desc,30,4,0,0.0,[],[]
+causal_data,36786524,5,0,0.0,[],[]
