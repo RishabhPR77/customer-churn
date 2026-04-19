@@ -1,9 +1,6 @@
-# ── Environment ──────────────────────────────────────────────────────────────
 .env
 *.env
 .env.local
-
-# ── Raw data (too large for GitHub — download from Kaggle) ───────────────────
 data/product.csv
 data/hh_demographic.csv
 data/coupon.csv
@@ -14,8 +11,6 @@ data/causal_data.csv
 data/transaction_data.csv
 data/feature_matrix.csv
 data/feature_matrix_segmented.csv
-
-# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
@@ -25,27 +20,17 @@ __pycache__/
 dist/
 build/
 *.egg
-
-# ── Virtual environments ──────────────────────────────────────────────────────
 venv/
 env/
 .venv/
 .env/
-
-# ── Jupyter ───────────────────────────────────────────────────────────────────
 .ipynb_checkpoints/
 */.ipynb_checkpoints/
-
-# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# ── IDEs ──────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# ── Streamlit ─────────────────────────────────────────────────────────────────
 .streamlit/secrets.toml
