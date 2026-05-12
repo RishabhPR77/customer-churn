@@ -30,7 +30,7 @@ st.markdown("""
 /* ── Top nav bar ── */
 .topbar {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 0 16px 0; border-bottom: 1px solid rgba(128,128,128,0.18);
+    padding: 30px 0 16px 0; border-bottom: 1px solid rgba(128,128,128,0.18);
     margin-bottom: 18px;
 }
 .topbar-title { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
@@ -108,6 +108,18 @@ st.markdown("""
 
 /* ── Streamlit metric override ── */
 div[data-testid="metric-container"] { padding: 0 !important; background: none !important; border: none !important; }
+
+/* ── Filter expander ── */
+[data-testid="stExpander"] {
+    border: 1px solid rgba(128,128,128,0.15) !important;
+    border-radius: 10px !important;
+    margin-bottom: 16px !important;
+}
+[data-testid="stExpander"] summary {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: var(--text-color) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -159,12 +171,12 @@ def load(): return pd.read_csv('data/final_scored.csv')
 df = load()
 
 # ─── Top nav bar ──────────────────────────────────────────────────────────────
-nc1, nc2 = st.columns([5,1])
+nc1, nc2 = st.columns([5, 1])
 with nc1:
     st.markdown("""
     <div class="topbar">
       <div>
-        <div class="topbar-title">🛒 Customer Retention Dashboard</div>
+        <div class="topbar-title">Customer Retention Dashboard</div>
         <div class="topbar-sub">Dunnhumby Complete Journey · 2,499 households · 2-year window · Random Forest AUC 0.879</div>
       </div>
     </div>""", unsafe_allow_html=True)
@@ -173,35 +185,66 @@ with nc2:
     icon  = '● Groq AI active' if GROQ_KEY else '○ Groq AI — add key'
     st.markdown(f"<br><span class='{badge}'>{icon}</span>", unsafe_allow_html=True)
 
-# ─── Compact filter row ───────────────────────────────────────────────────────
-with st.container():
-    fa, fb, fc, fd = st.columns([2, 1.5, 2.5, 0.8])
-    with fa:
-        seg_f = st.multiselect("🏷 Segment", SEG_ORDER, default=SEG_ORDER,
-                                placeholder="All segments")
-    with fb:
-        risk_f = st.multiselect("⚡ Risk tier", ['High','Medium','Low'],
-                                 default=['High','Medium','Low'],
-                                 placeholder="All tiers")
-    with fc:
-        lo, hi = int(df['monetary'].min()), int(df['monetary'].max())
-        spend_f = st.slider("💰 Spend range ($)", lo, hi, (lo, hi), step=50,
-                             label_visibility='visible')
-    with fd:
-        st.markdown("<br>", unsafe_allow_html=True)
-        reset = st.button("↺ Reset", use_container_width=True)
-        if reset: st.rerun()
+# ─── Defaults ─────────────────────────────────────────────────────────────────
+lo, hi = int(df['monetary'].min()), int(df['monetary'].max())
 
-# ─── Filter ───────────────────────────────────────────────────────────────────
+# Initialise session state so filters persist across reruns
+if 'seg_f'    not in st.session_state: st.session_state['seg_f']    = SEG_ORDER
+if 'risk_f'   not in st.session_state: st.session_state['risk_f']   = ['High','Medium','Low']
+if 'spend_lo' not in st.session_state: st.session_state['spend_lo'] = lo
+if 'spend_hi' not in st.session_state: st.session_state['spend_hi'] = hi
+
+# ─── Collapsible filter panel ─────────────────────────────────────────────────
+is_filtered = (
+    st.session_state['seg_f']    != SEG_ORDER or
+    st.session_state['risk_f']   != ['High','Medium','Low'] or
+    st.session_state['spend_lo'] != lo or
+    st.session_state['spend_hi'] != hi
+)
+filter_label = " Filters — active ✦" if is_filtered else " Filters"
+
+with st.expander(filter_label, expanded=False):
+    fa, fb, fc = st.columns([2, 1.5, 2.5])
+    with fa:
+        seg_f = st.multiselect(
+            "Segment", SEG_ORDER,
+            default=st.session_state['seg_f'],
+            help="Select which customer segments to include",
+        )
+        st.session_state['seg_f'] = seg_f or SEG_ORDER
+    with fb:
+        risk_f = st.multiselect(
+            "Risk tier", ['High','Medium','Low'],
+            default=st.session_state['risk_f'],
+            help="High = churn prob > 50%, Medium = 20–50%, Low = < 20%",
+        )
+        st.session_state['risk_f'] = risk_f or ['High','Medium','Low']
+    with fc:
+        spend_f = st.slider(
+            "Household total spend ($)",
+            lo, hi,
+            (st.session_state['spend_lo'], st.session_state['spend_hi']),
+            step=50,
+            help="Filter by how much a household spent over the 2-year window",
+        )
+        st.session_state['spend_lo'], st.session_state['spend_hi'] = spend_f
+
+    if st.button("↺ Reset all filters"):
+        for k, v in [('seg_f', SEG_ORDER), ('risk_f', ['High','Medium','Low']),
+                     ('spend_lo', lo), ('spend_hi', hi)]:
+            st.session_state[k] = v
+        st.rerun()
+
+# ─── Apply filters ────────────────────────────────────────────────────────────
 dff = df[
-    df['segment_name'].isin(seg_f or SEG_ORDER) &
-    df['churn_risk_tier'].isin(risk_f or ['High','Medium','Low']) &
-    df['monetary'].between(spend_f[0], spend_f[1])
+    df['segment_name'].isin(st.session_state['seg_f']) &
+    df['churn_risk_tier'].isin(st.session_state['risk_f']) &
+    df['monetary'].between(st.session_state['spend_lo'], st.session_state['spend_hi'])
 ].copy()
 dff['priority_score'] = dff['churn_proba'] * np.log1p(dff['monetary'])
 
-rev_at_risk = dff[dff['churn_risk_tier']=='High']['monetary'].sum()
-churn_delta = (dff['churned'].mean() - df['churned'].mean()) * 100
+rev_at_risk  = dff[dff['churn_risk_tier']=='High']['monetary'].sum()
+churn_delta  = (dff['churned'].mean() - df['churned'].mean()) * 100
 
 # ─── KPI row (HTML cards for full control) ───────────────────────────────────
 delta_col  = "kpi-red" if churn_delta >= 0 else "kpi-green"
@@ -244,9 +287,9 @@ st.markdown(f"""
 
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs([
-    "📊  Segments",
-    "⚠️  Churn Risk",
-    "🎯  Action List",
+    " Segments",
+    "Churn Risk",
+    "Action List",
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -286,25 +329,52 @@ with tab1:
 
     with c2:
         metric_opts = {
-            'monetary':'Total 2-year spend ($)',
-            'frequency':'Shopping trips',
-            'avg_basket':'Avg basket size ($)',
-            'recency':'Days since last purchase',
-            'pct_spend_on_discount':'% spend on discount',
+            'monetary'             : 'Total 2-year spend ($)',
+            'frequency'            : 'Shopping trips',
+            'avg_basket'           : 'Avg basket size ($)',
+            'recency'              : 'Days since last purchase',
+            'pct_spend_on_discount': '% spend on discount',
         }
         mc = st.selectbox("Compare metric across segments",
                            list(metric_opts.keys()),
                            format_func=lambda x: metric_opts[x])
-        fig2 = px.box(dff, x='segment_name', y=mc,
-                      color='segment_name', color_discrete_map=COLORS,
-                      category_orders={'segment_name':SEG_ORDER},
-                      points=False,
-                      title=f'{metric_opts[mc]} by segment')
-        fig2.update_layout(showlegend=False, height=320,
-                           margin=dict(t=40,b=10,l=0,r=0),
-                           xaxis_title='', yaxis_title=metric_opts[mc],
-                           plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                           title_font_size=13)
+
+        # Median per segment + overall average reference line
+        med = (dff.groupby('segment_name')[mc]
+               .median().reindex(SEG_ORDER).reset_index())
+        med.columns = ['segment_name', 'value']
+        overall_avg = dff[mc].median()
+
+        # Format labels nicely
+        if mc in ['monetary', 'avg_basket']:
+            med['label'] = med['value'].apply(lambda x: f'${x:,.0f}')
+            avg_label    = f'Overall median: ${overall_avg:,.0f}'
+        elif mc == 'pct_spend_on_discount':
+            med['label'] = med['value'].apply(lambda x: f'{x*100:.1f}%')
+            avg_label    = f'Overall median: {overall_avg*100:.1f}%'
+        else:
+            med['label'] = med['value'].apply(lambda x: f'{x:,.0f}')
+            avg_label    = f'Overall median: {overall_avg:,.0f}'
+
+        fig2 = px.bar(
+            med, x='value', y='segment_name', orientation='h',
+            color='segment_name', color_discrete_map=COLORS,
+            text='label',
+            title=f'Median {metric_opts[mc]} per segment',
+        )
+        fig2.update_traces(textposition='outside', textfont_size=11)
+        fig2.add_vline(x=overall_avg, line_dash='dash', line_color='gray',
+                       line_width=1.2, opacity=0.6,
+                       annotation_text=avg_label,
+                       annotation_position='top right',
+                       annotation_font=dict(size=9, color='gray'))
+        fig2.update_layout(
+            showlegend=False, height=320,
+            margin=dict(t=40, b=10, l=0, r=80),
+            xaxis_title=metric_opts[mc], yaxis_title='',
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            title_font_size=13,
+        )
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown('<div class="sec-hdr">Segment summary</div>', unsafe_allow_html=True)
@@ -346,66 +416,73 @@ with tab2:
     c1, c2 = st.columns(2)
 
     with c1:
+        # Simple grouped bar: model churn score vs actual churn rate per segment
         bub = dff.groupby('segment_name').agg(
-            avg_prob     =('churn_proba','mean'),
-            median_spend =('monetary','median'),
-            size         =('household_key','count'),
-            churn_rate   =('churned','mean'),
-        ).reset_index()
-        fig3 = px.scatter(bub, x='avg_prob', y='median_spend',
-                          size='size', color='segment_name',
-                          color_discrete_map=COLORS, text='segment_name',
-                          size_max=65, custom_data=['size','churn_rate'],
-                          title='Value vs churn risk  (bubble = segment size)')
-        fig3.update_traces(
-            textposition='top center',
-            hovertemplate='<b>%{text}</b><br>Avg churn prob: <b>%{x:.1%}</b><br>'
-                          'Median spend: <b>$%{y:,.0f}</b><br>'
-                          'Households: <b>%{customdata[0]}</b><br>'
-                          'Actual churn: <b>%{customdata[1]:.1%}</b><extra></extra>')
-        mx, my = bub['avg_prob'].mean(), bub['median_spend'].mean()
-        fig3.add_vline(x=mx, line_dash='dash', line_color='gray', opacity=0.3)
-        fig3.add_hline(y=my, line_dash='dash', line_color='gray', opacity=0.3)
-        ymax, ymin = bub['median_spend'].max(), bub['median_spend'].min()
-        for xp, yp, txt, col in [
-            (0.001, ymax*0.96, '★ Protect & Delight','#1D9E75'),
-            (mx+0.003, ymax*0.96,'⚠ Watch Closely','#EF9F27'),
-            (0.001, ymin*1.5,'✓ Stable','#999'),
-            (mx+0.003, ymin*1.5,'🚨 Act Now','#D85A30'),
-        ]:
-            fig3.add_annotation(x=xp, y=yp, text=f'<b>{txt}</b>', showarrow=False,
-                                font=dict(size=9, color=col), xanchor='left')
-        fig3.update_layout(height=340, showlegend=False,
-                           xaxis_title='Avg churn probability →  (higher = more at risk)',
-                           yaxis_title='Median household spend ($)',
-                           margin=dict(t=40,b=10,l=0,r=0),
-                           plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                           xaxis=dict(tickformat='.0%'), title_font_size=13)
+            model_score  =('churn_proba','mean'),
+            actual_churn =('churned','mean'),
+            households   =('household_key','count'),
+        ).reindex(SEG_ORDER).reset_index()
+        bub['model_score_pct']  = (bub['model_score']  * 100).round(1)
+        bub['actual_churn_pct'] = (bub['actual_churn'] * 100).round(1)
+
+        fig3 = go.Figure()
+        fig3.add_trace(go.Bar(
+            name='Avg churn score (model)',
+            x=bub['segment_name'], y=bub['model_score_pct'],
+            marker_color='#7F77DD', text=bub['model_score_pct'].apply(lambda x: f'{x:.1f}%'),
+            textposition='outside',
+            hovertemplate='<b>%{x}</b><br>Avg model score: <b>%{y:.1f}%</b><extra></extra>',
+        ))
+        fig3.add_trace(go.Bar(
+            name='Actual churn rate',
+            x=bub['segment_name'], y=bub['actual_churn_pct'],
+            marker_color='#D85A30', text=bub['actual_churn_pct'].apply(lambda x: f'{x:.1f}%'),
+            textposition='outside',
+            hovertemplate='<b>%{x}</b><br>Actual churn: <b>%{y:.1f}%</b><extra></extra>',
+        ))
+        fig3.update_layout(
+            barmode='group', height=340,
+            title='Predicted churn score vs actual churn rate by segment',
+            xaxis_title='', yaxis_title='Percentage (%)',
+            yaxis=dict(ticksuffix='%'),
+            legend=dict(orientation='h', y=-0.2),
+            margin=dict(t=40, b=10, l=0, r=0),
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            title_font_size=13,
+        )
         st.plotly_chart(fig3, use_container_width=True)
 
     with c2:
+        # % of households in each risk tier per segment — immediately readable by anyone
+        tier_counts = (dff.groupby(['segment_name','churn_risk_tier'])
+                       .size().reset_index(name='count'))
+        tier_totals = tier_counts.groupby('segment_name')['count'].transform('sum')
+        tier_counts['pct'] = (tier_counts['count'] / tier_totals * 100).round(1)
+        tier_counts = tier_counts[tier_counts['segment_name'].isin(SEG_ORDER)]
+
         fig4 = go.Figure()
-        for seg in SEG_ORDER:
-            d = dff[dff['segment_name']==seg]['churn_proba']
-            if len(d):
-                fig4.add_trace(go.Histogram(
-                    x=d, name=seg, opacity=0.65, marker_color=COLORS[seg],
-                    nbinsx=35, histnorm='probability density',
-                    hovertemplate=f'<b>{seg}</b><br>Churn prob: %{{x:.2f}}<extra></extra>'))
-        fig4.add_vline(x=0.5, line_dash='dash', line_color='#D85A30', line_width=1.5,
-                       annotation_text='High risk threshold (0.5)',
-                       annotation_position='top right', annotation_font=dict(size=9, color='#D85A30'))
-        fig4.add_vline(x=0.2, line_dash='dot', line_color='#EF9F27', line_width=1,
-                       annotation_text='Medium threshold (0.2)',
-                       annotation_position='top left', annotation_font=dict(size=9, color='#EF9F27'))
-        fig4.update_layout(barmode='overlay', height=340,
-                           title='Churn score distribution by segment',
-                           xaxis_title='Churn probability score  (0 = safe, 1 = certain churn)',
-                           yaxis_title='Density',
-                           legend=dict(orientation='h', y=-0.22, title=''),
-                           margin=dict(t=40,b=10,l=0,r=0),
-                           plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                           title_font_size=13)
+        for tier, color in [('High','#D85A30'),('Medium','#EF9F27'),('Low','#1D9E75')]:
+            td = tier_counts[tier_counts['churn_risk_tier']==tier].set_index('segment_name').reindex(SEG_ORDER).reset_index()
+            fig4.add_trace(go.Bar(
+                name=tier,
+                x=td['segment_name'],
+                y=td['pct'].fillna(0),
+                marker_color=color,
+                text=td['pct'].fillna(0).apply(lambda x: f'{x:.0f}%' if x >= 6 else ''),
+                textposition='inside',
+                textfont=dict(color='white', size=11),
+                hovertemplate='<b>%{x}</b><br>' + tier + ' risk: <b>%{y:.1f}%</b> of segment<extra></extra>',
+            ))
+        fig4.update_layout(
+            barmode='stack', height=340,
+            title='What % of each segment is at risk?',
+            xaxis_title='', yaxis_title='% of households in segment',
+            yaxis=dict(ticksuffix='%', range=[0, 105]),
+            legend=dict(title='Risk tier', orientation='h', y=-0.2),
+            margin=dict(t=40, b=10, l=0, r=0),
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            title_font_size=13,
+        )
         st.plotly_chart(fig4, use_container_width=True)
 
     c3, c4 = st.columns(2)
@@ -454,7 +531,7 @@ with tab2:
         else:
             st.info("No high-risk households in current filter.")
 
-    st.markdown('<div class="ai-panel"><div class="ai-panel-hdr">🤖 AI Churn Risk Deep-Dive</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ai-panel"><div class="ai-panel-hdr"> AI Churn Risk Deep-Dive</div>', unsafe_allow_html=True)
     st.caption("Explains behavioural patterns driving churn and recommends the most cost-effective action.")
     if st.button("Run Churn Analysis", use_container_width=True, key="btn_ai2"):
         with st.spinner("Asking Groq (Llama 3)..."):
